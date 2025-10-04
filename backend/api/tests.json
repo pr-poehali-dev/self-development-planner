@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Get goals list",
+      "method": "GET",
+      "path": "/?endpoint=goals",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Get tasks list",
+      "method": "GET",
+      "path": "/?endpoint=tasks",
+      "expectedStatus": 200
+    }
+  ]
+}

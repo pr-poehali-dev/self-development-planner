@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 
 const motivationalQuotes = [
   "Неважно пожрать в чось, прокрунте опрасе імети.",
@@ -28,23 +32,20 @@ interface Task {
   completed: boolean;
 }
 
+const API_URL = 'https://functions.poehali.dev/75b8a5ae-57c5-4291-95af-374b5ecc07a9';
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [currentQuote] = useState(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
-  
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: 1, title: 'Прочитать 2 книги в месяц', category: 'study', progress: 65, completed: false },
-    { id: 2, title: 'Тренировки 4 раза в неделю', category: 'health', progress: 80, completed: false },
-    { id: 3, title: 'Уход за кожей утром и вечером', category: 'appearance', progress: 45, completed: false },
-    { id: 4, title: 'Медитация 15 минут ежедневно', category: 'health', progress: 30, completed: false },
-  ]);
-
-  const [dailyTasks, setDailyTasks] = useState<Task[]>([
-    { id: 1, title: 'Утренняя зарядка', time: '07:00', completed: false },
-    { id: 2, title: 'Изучение английского', time: '09:00', completed: false },
-    { id: 3, title: 'Работа над проектом', time: '14:00', completed: false },
-    { id: 4, title: 'Вечерняя пробежка', time: '18:00', completed: false },
-  ]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<Task[]>([]);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalCategory, setNewGoalCategory] = useState('goals');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskTime, setNewTaskTime] = useState('12:00');
+  const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const categories = [
     { id: 'study', name: 'Учеба', icon: 'BookOpen', color: 'from-blue-500 to-blue-700' },
@@ -55,27 +56,155 @@ const Index = () => {
     { id: 'planner', name: 'Планировщик', icon: 'Calendar', color: 'from-indigo-500 to-indigo-700' },
   ];
 
-  const overallProgress = Math.round(goals.reduce((acc, goal) => acc + goal.progress, 0) / goals.length);
-
-  const toggleTask = (id: number) => {
-    setDailyTasks(tasks => 
-      tasks.map(task => 
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
-    );
+  const loadGoals = async () => {
+    try {
+      const response = await fetch(`${API_URL}?endpoint=goals`);
+      const data = await response.json();
+      setGoals(data.goals);
+    } catch (error) {
+      console.error('Failed to load goals:', error);
+    }
   };
 
-  const toggleGoal = (id: number) => {
-    setGoals(goals => 
-      goals.map(goal => 
-        goal.id === id ? { ...goal, completed: !goal.completed } : goal
-      )
+  const loadTasks = async () => {
+    try {
+      const response = await fetch(`${API_URL}?endpoint=tasks`);
+      const data = await response.json();
+      setDailyTasks(data.tasks);
+    } catch (error) {
+      console.error('Failed to load tasks:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadGoals();
+    loadTasks();
+  }, []);
+
+  const overallProgress = goals.length > 0 
+    ? Math.round(goals.reduce((acc, goal) => acc + goal.progress, 0) / goals.length)
+    : 0;
+
+  const toggleTask = async (id: number) => {
+    const task = dailyTasks.find(t => t.id === id);
+    if (!task) return;
+
+    const newCompleted = !task.completed;
+    setDailyTasks(tasks => 
+      tasks.map(t => t.id === id ? { ...t, completed: newCompleted } : t)
     );
+
+    try {
+      await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: 'task',
+          id,
+          completed: newCompleted
+        })
+      });
+    } catch (error) {
+      console.error('Failed to update task:', error);
+      setDailyTasks(tasks => 
+        tasks.map(t => t.id === id ? { ...t, completed: !newCompleted } : t)
+      );
+    }
+  };
+
+  const toggleGoal = async (id: number) => {
+    const goal = goals.find(g => g.id === id);
+    if (!goal) return;
+
+    const newCompleted = !goal.completed;
+    setGoals(goals => 
+      goals.map(g => g.id === id ? { ...g, completed: newCompleted } : g)
+    );
+
+    try {
+      await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: 'goal',
+          id,
+          completed: newCompleted
+        })
+      });
+    } catch (error) {
+      console.error('Failed to update goal:', error);
+      setGoals(goals => 
+        goals.map(g => g.id === id ? { ...g, completed: !newCompleted } : g)
+      );
+    }
+  };
+
+  const addGoal = async () => {
+    if (!newGoalTitle.trim()) {
+      toast({ title: 'Введите название цели', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_goal',
+          title: newGoalTitle,
+          category: newGoalCategory
+        })
+      });
+      
+      if (response.ok) {
+        toast({ title: 'Цель добавлена!' });
+        setNewGoalTitle('');
+        setIsGoalDialogOpen(false);
+        loadGoals();
+      }
+    } catch (error) {
+      console.error('Failed to add goal:', error);
+      toast({ title: 'Ошибка при добавлении цели', variant: 'destructive' });
+    }
+  };
+
+  const addTask = async () => {
+    if (!newTaskTitle.trim()) {
+      toast({ title: 'Введите название задачи', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_task',
+          title: newTaskTitle,
+          time: newTaskTime
+        })
+      });
+      
+      if (response.ok) {
+        toast({ title: 'Задача добавлена!' });
+        setNewTaskTitle('');
+        setNewTaskTime('12:00');
+        setIsTaskDialogOpen(false);
+        loadTasks();
+      }
+    } catch (error) {
+      console.error('Failed to add task:', error);
+      toast({ title: 'Ошибка при добавлении задачи', variant: 'destructive' });
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a1625] via-[#221c35] to-[#2d2440]">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#1a1625] via-[#221c35] to-[#2d2440] relative">
+      <div 
+        className="absolute inset-0 opacity-10 bg-center bg-cover bg-no-repeat"
+        style={{ backgroundImage: 'url(https://cdn.poehali.dev/files/278f34af-d640-4639-9281-2110f21e2f33.jpeg)' }}
+      />
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-7xl">
         <header className="mb-12 text-center animate-fade-in">
           <h1 className="text-6xl font-extrabold mb-4 bg-gradient-to-r from-primary via-purple-400 to-primary bg-clip-text text-transparent">
             МАСТИКА
@@ -128,7 +257,7 @@ const Index = () => {
                   <h3 className="text-2xl font-bold">Активные цели</h3>
                 </div>
                 <div className="space-y-4">
-                  {goals.map((goal) => (
+                  {goals.slice(0, 4).map((goal) => (
                     <div key={goal.id} className="space-y-2">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">{goal.title}</span>
@@ -290,10 +419,43 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Цели</h2>
                   <p className="text-muted-foreground">Достигай невозможного</p>
                 </div>
-                <Button className="bg-primary hover:bg-primary/90">
-                  <Icon name="Plus" size={20} className="mr-2" />
-                  Добавить цель
-                </Button>
+                <Dialog open={isGoalDialogOpen} onOpenChange={setIsGoalDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-primary hover:bg-primary/90">
+                      <Icon name="Plus" size={20} className="mr-2" />
+                      Добавить цель
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Новая цель</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Название цели</label>
+                        <Input 
+                          value={newGoalTitle}
+                          onChange={(e) => setNewGoalTitle(e.target.value)}
+                          placeholder="Например: Изучить React"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Категория</label>
+                        <Select value={newGoalCategory} onValueChange={setNewGoalCategory}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map(cat => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button onClick={addGoal} className="w-full">Добавить</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
               <div className="space-y-4">
                 {goals.map((goal) => (
@@ -328,10 +490,38 @@ const Index = () => {
                   <h2 className="text-3xl font-bold">Планировщик</h2>
                   <p className="text-muted-foreground">Организуй свой день</p>
                 </div>
-                <Button className="bg-primary hover:bg-primary/90">
-                  <Icon name="Plus" size={20} className="mr-2" />
-                  Добавить задачу
-                </Button>
+                <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-primary hover:bg-primary/90">
+                      <Icon name="Plus" size={20} className="mr-2" />
+                      Добавить задачу
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Новая задача</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Название задачи</label>
+                        <Input 
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          placeholder="Например: Позвонить клиенту"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Время</label>
+                        <Input 
+                          type="time"
+                          value={newTaskTime}
+                          onChange={(e) => setNewTaskTime(e.target.value)}
+                        />
+                      </div>
+                      <Button onClick={addTask} className="w-full">Добавить</Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 {dailyTasks.map((task) => (
